@@ -1,0 +1,70 @@
+version: "3.9"
+
+services:
+
+  # ----------------------------
+  # Speech-to-text service
+  # ----------------------------
+  stt-api:
+    image: audiotranscriptiondemo-app:latest
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  # ----------------------------
+  # Local LLM service
+  # ----------------------------
+  llm-api:
+    image: localllmdemo-app:latest
+    environment:
+      - LLM_BASE_URL=http://ollama:11434
+      - LLM_MODEL=llama3.2:3b
+    ports:
+      - "8001:8000"
+    depends_on:
+      - ollama
+
+  # ----------------------------
+  # Ollama backend
+  # ----------------------------
+  ollama:
+    image: ollama/ollama:latest
+    command: ["serve"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+
+  ollama-init:
+    image: ollama/ollama:latest
+    depends_on:
+      - ollama
+    volumes:
+      - ollama:/root/.ollama
+    entrypoint: >
+      sh -c "
+      until ollama list >/dev/null 2>&1; do sleep 1; done &&
+      ollama pull llama3.2:3b
+      "
+    restart: "no"
+
+  # ----------------------------
+  # Orchestrator
+  # ----------------------------
+  orchestrator:
+    build: .
+    container_name: speech_llm_orchestrator
+    environment:
+      - STT_BASE_URL=http://stt-api:8000
+      - LLM_BASE_URL=http://llm-api:8000
+    ports:
+      - "9000:8000"
+    depends_on:
+      - stt-api
+      - llm-api
+    restart: unless-stopped
+
+
+volumes:
+  ollama:
